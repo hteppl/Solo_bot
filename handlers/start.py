@@ -8,8 +8,8 @@ from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from config import CHANNEL_URL, CONNECT_ANDROID, CONNECT_IOS, DOWNLOAD_ANDROID, DOWNLOAD_IOS, SUPPORT_CHAT_URL
-from utils.database import add_connection, add_referral, check_connection_exists, get_trial, use_trial
-from utils.keys.trial_key import create_trial_key
+from database import add_connection, add_referral, check_connection_exists, get_trial, use_trial
+from handlers.keys.trial_key import create_trial_key
 from handlers.texts import INSTRUCTIONS_TRIAL, WELCOME_TEXT, get_about_vpn
 
 router = Router()
@@ -116,4 +116,4 @@ async def handle_about_vpn(callback_query: CallbackQuery):
     )
     builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="start"))
 
-    await callback_query.message.answer(get_about_vpn("3.2.2-Release"), reply_markup=builder.as_markup())
+    await callback_query.message.answer(get_about_vpn("3.2.21-Release"), reply_markup=builder.as_markup())
