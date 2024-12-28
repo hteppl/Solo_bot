@@ -122,7 +122,7 @@ async def export_users_csv(callback_query: CallbackQuery, session: Any):
             )
             return
 
-        csv_data = "tg_id,username,first_name,last_name,language_code,is_bot,balance,trial\n"  # Заголовки CSV
+        csv_data = "tg_id,username,first_name,last_name,language_code,is_bot,balance,trial\n"
         for user in users:
             csv_data += f"{user['tg_id']},{user['username']},{user['first_name']},{user['last_name']},{user['language_code']},{user['is_bot']},{user['balance']},{user['trial']}\n"
 
