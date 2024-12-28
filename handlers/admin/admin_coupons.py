@@ -3,11 +3,11 @@ from typing import Any
 from aiogram import F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from database import create_coupon, delete_coupon_from_db, get_all_coupons
 from filters.admin import IsAdminFilter
+from keyboards.admin.coupons_kb import build_coupons_kb, build_coupons_list_kb
+from keyboards.common_kb import build_back_kb
 from logger import logger
 
 
@@ -20,17 +20,15 @@ router = Router()
 
 @router.callback_query(F.data == "coupons_editor", IsAdminFilter())
 async def show_coupon_management_menu(
-    callback_query: types.CallbackQuery, state: FSMContext
+        callback_query: types.CallbackQuery, state: FSMContext
 ):
     await state.clear()
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="➕ Создать купон", callback_data="create_coupon")
-    )
-    builder.row(InlineKeyboardButton(text="Купоны", callback_data="coupons"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
+
+    kb = build_coupons_kb()
+
     await callback_query.message.answer(
-        "🛠 Меню управления купонами:", reply_markup=builder.as_markup()
+        text="🛠 Меню управления купонами:",
+        reply_markup=kb
     )
 
 
@@ -40,19 +38,15 @@ async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
         coupons = await get_all_coupons(session)
 
         if not coupons:
-            builder = InlineKeyboardBuilder()
-            builder.row(
-                InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor")
-            )
-
+            kb = build_back_kb("coupons_editor")
             await callback_query.message.answer(
-                "❌ На данный момент нет доступных купонов. 🚫\nВы можете вернуться в меню управления. 🔙",
-                reply_markup=builder.as_markup(),
+                text="❌ На данный момент нет доступных купонов. 🚫\nВы можете вернуться в меню управления. 🔙",
+                reply_markup=kb,
             )
             return
 
+        kb = build_coupons_list_kb(coupons)
         coupon_list = "📜 Список всех купонов:\n\n"
-        builder = InlineKeyboardBuilder()
 
         for coupon in coupons:
             coupon_list += (
@@ -62,18 +56,9 @@ async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
                 f"✅ <b>Использовано:</b> {coupon['usage_count']} раз\n\n"
             )
 
-            builder.row(
-                InlineKeyboardButton(
-                    text=f"❌ Удалить {coupon['code']}",
-                    callback_data=f"delete_coupon_{coupon['code']}",
-                )
-            )
-
-        builder.row(
-            InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor")
-        )
         await callback_query.message.answer(
-            coupon_list, reply_markup=builder.as_markup()
+            text=coupon_list,
+            reply_markup=kb
         )
 
     except Exception as e:
@@ -82,7 +67,7 @@ async def show_coupon_list(callback_query: types.CallbackQuery, session: Any):
 
 @router.callback_query(F.data.startswith("delete_coupon_"), IsAdminFilter())
 async def handle_delete_coupon(callback_query: types.CallbackQuery, session: Any):
-    coupon_code = callback_query.data[len("delete_coupon_") :]
+    coupon_code = callback_query.data[len("delete_coupon_"):]
 
     try:
         result = await delete_coupon_from_db(coupon_code, session)
@@ -91,7 +76,7 @@ async def handle_delete_coupon(callback_query: types.CallbackQuery, session: Any
             await show_coupon_list(callback_query, session)
         else:
             await callback_query.message.answer(
-                f"❌ Купон с кодом <b>{coupon_code}</b> не найден.",
+                text=f"❌ Купон с кодом <b>{coupon_code}</b> не найден.",
             )
             await show_coupon_list(callback_query, session)
 
@@ -101,14 +86,17 @@ async def handle_delete_coupon(callback_query: types.CallbackQuery, session: Any
 
 @router.callback_query(F.data == "create_coupon", IsAdminFilter())
 async def handle_create_coupon(callback_query: types.CallbackQuery, state: FSMContext):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
+    kb = build_back_kb("coupons_editor")
 
-    await callback_query.message.answer(
+    text = (
         "🎫 <b>Введите данные для создания купона в формате:</b>\n\n"
         "📝 <i>код</i> 💰 <i>сумма</i> 🔢 <i>лимит</i>\n\n"
-        "Пример: <b>'COUPON1 50 5'</b> 👈\n\n",
-        reply_markup=builder.as_markup(),
+        "Пример: <b>'COUPON1 50 5'</b> 👈\n\n"
+    )
+
+    await callback_query.message.answer(
+        text=text,
+        reply_markup=kb,
     )
     await state.set_state(AdminCouponsState.waiting_for_coupon_data)
 
@@ -116,18 +104,20 @@ async def handle_create_coupon(callback_query: types.CallbackQuery, state: FSMCo
 @router.message(AdminCouponsState.waiting_for_coupon_data, IsAdminFilter())
 async def process_coupon_data(message: types.Message, state: FSMContext, session: Any):
     text = message.text.strip()
-
     parts = text.split()
 
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor"))
+    kb = build_back_kb("coupons_editor")
 
     if len(parts) != 3:
-        await message.answer(
+        text = (
             "❌ <b>Некорректный формат!</b> 📝 Пожалуйста, введите данные в формате:\n"
             "🏷️ <b>код</b> 💰 <b>сумма</b> 🔢 <b>лимит</b>\n"
-            "Пример: <b>'COUPON1 50 5'</b> 👈",
-            reply_markup=builder.as_markup(),
+            "Пример: <b>'COUPON1 50 5'</b> 👈"
+        )
+
+        await message.answer(
+            text=text,
+            reply_markup=kb,
         )
         return
 
@@ -136,10 +126,14 @@ async def process_coupon_data(message: types.Message, state: FSMContext, session
         coupon_amount = float(parts[1])
         usage_limit = int(parts[2])
     except ValueError:
-        await message.answer(
+        text = (
             "⚠️ <b>Проверьте правильность введенных данных!</b>\n"
-            "💱 Сумма должна быть числом, 🔢 а лимит — целым числом.",
-            reply_markup=builder.as_markup(),
+            "💱 Сумма должна быть числом, 🔢 а лимит — целым числом."
+        )
+
+        await message.answer(
+            text=text,
+            reply_markup=kb,
         )
         return
 
@@ -152,12 +146,12 @@ async def process_coupon_data(message: types.Message, state: FSMContext, session
             f"Лимит использования: <b>{usage_limit} раз</b> 🔢."
         )
 
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="🔙 Назад", callback_data="coupons_editor")
-        )
+        kb = build_back_kb("coupons_editor")
 
-        await message.answer(result_message, reply_markup=builder.as_markup())
+        await message.answer(
+            text=result_message,
+            reply_markup=kb
+        )
         await state.clear()
 
     except Exception as e:

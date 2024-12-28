@@ -7,12 +7,13 @@ from aiogram import F, Router, types
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import BufferedInputFile, CallbackQuery
 
 from backup import backup_database
 from bot import bot
 from filters.admin import IsAdminFilter
+from keyboards.admin.panel_kb import build_start_kb, build_user_stats_kb, build_restart_kb, build_user_editor_kb
+from keyboards.common_kb import build_back_kb
 from logger import logger
 
 router = Router()
@@ -30,66 +31,14 @@ async def handle_admin_callback_query(callback_query: CallbackQuery, state: FSMC
     await handle_admin_message(callback_query.message, state)
 
 
-@router.message(Command("admin"), F.data == "admin", IsAdminFilter())
+@router.message(Command("admin"), IsAdminFilter())
 async def handle_admin_message(message: types.Message, state: FSMContext):
     await state.clear()
+    kb = build_start_kb()
 
-    BOT_VERSION = "3.2.4-beta"  # Укажите текущую версию бота
-
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="📊 Статистика пользователей", callback_data="user_stats"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="👥 Управление пользователями", callback_data="user_editor"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🖥️ Управление серверами", callback_data="servers_editor"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🎟️ Управление купонами", callback_data="coupons_editor"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(text="📢 Массовая рассылка", callback_data="send_to_alls")
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🤖 Управление Ботом", callback_data="bot_management"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(text="👤 Личный кабинет", callback_data="profile")
-    )
     await message.answer(
-        f"🤖 Панель администратора\n\nВерсия бота: <b>{BOT_VERSION}</b>",
-        reply_markup=builder.as_markup(),
-        parse_mode="HTML"
-    )
-
-
-@router.callback_query(F.data == "bot_management")
-async def handle_bot_management(callback_query: types.CallbackQuery):
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="💾 Создать резервную копию", callback_data="backups")
-    )
-    builder.row(
-        InlineKeyboardButton(text="🔄 Перезагрузить бота", callback_data="restart_bot")
-    )
-    builder.row(
-        InlineKeyboardButton(text="⬅️ Назад", callback_data="admin")
-    )
-    await callback_query.message.answer(
-        "🤖 Управление ботом",
-        reply_markup=builder.as_markup(),
+        text="🤖 Панель администратора",
+        reply_markup=kb
     )
 
 
@@ -135,27 +84,11 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
             f"   🏦 За все время: <b>{total_payments_all_time} ₽</b>\n"
         )
 
-        builder = InlineKeyboardBuilder()
-        builder.row(
-            InlineKeyboardButton(text="🔄 Обновить", callback_data="user_stats")
-        )
-        builder.row(
-            InlineKeyboardButton(
-                text="📥 Выгрузить пользователей в CSV",
-                callback_data="export_users_csv",
-            )
-        )
-        builder.row(
-            InlineKeyboardButton(
-                text="📥 Выгрузить оплаты в CSV", callback_data="export_payments_csv"
-            )
-        )
-        builder.row(
-            InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin")
-        )
+        kb = build_user_stats_kb()
 
         await callback_query.message.answer(
-            stats_message, reply_markup=builder.as_markup()
+            text=stats_message,
+            reply_markup=kb
         )
     except Exception as e:
         logger.error(f"Error in user_stats_menu: {e}")
@@ -163,8 +96,8 @@ async def user_stats_menu(callback_query: CallbackQuery, session: Any):
 
 @router.callback_query(F.data == "export_users_csv", IsAdminFilter())
 async def export_users_csv(callback_query: CallbackQuery, session: Any):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_stats"))
+    kb = build_back_kb("user_stats")
+
     try:
         users = await session.fetch(
             """
@@ -184,7 +117,8 @@ async def export_users_csv(callback_query: CallbackQuery, session: Any):
 
         if not users:
             await callback_query.message.answer(
-                "📭 Нет пользователей для экспорта.", reply_markup=builder.as_markup()
+                text="📭 Нет пользователей для экспорта.",
+                reply_markup=kb
             )
             return
 
@@ -200,22 +134,22 @@ async def export_users_csv(callback_query: CallbackQuery, session: Any):
         await callback_query.message.answer_document(
             file,
             caption="📥 Экспорт пользователей в CSV",
-            reply_markup=builder.as_markup(),
+            reply_markup=kb
         )
         file_name.close()
 
     except Exception as e:
         logger.error(f"Ошибка при экспорте пользователей в CSV: {e}")
         await callback_query.message.answer(
-            "❗ Произошла ошибка при экспорте пользователей.",
-            reply_markup=builder.as_markup(),
+            text="❗ Произошла ошибка при экспорте пользователей.",
+            reply_markup=kb
         )
 
 
 @router.callback_query(F.data == "export_payments_csv", IsAdminFilter())
 async def export_payments_csv(callback_query: CallbackQuery, session: Any):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_stats"))
+    kb = build_back_kb("user_stats")
+
     try:
         payments = await session.fetch(
             """
@@ -235,7 +169,8 @@ async def export_payments_csv(callback_query: CallbackQuery, session: Any):
 
         if not payments:
             await callback_query.message.answer(
-                "📭 Нет платежей для экспорта.", reply_markup=builder.as_markup()
+                text="📭 Нет платежей для экспорта.",
+                reply_markup=kb
             )
             return
 
@@ -249,32 +184,33 @@ async def export_payments_csv(callback_query: CallbackQuery, session: Any):
         file = BufferedInputFile(file_name.getvalue(), filename="payments_export.csv")
 
         await callback_query.message.answer_document(
-            file, caption="📥 Экспорт платежей в CSV", reply_markup=builder.as_markup()
+            document=file,
+            caption="📥 Экспорт платежей в CSV",
+            reply_markup=kb
         )
         file_name.close()
 
     except Exception as e:
         logger.error(f"Ошибка при экспорте платежей в CSV: {e}")
         await callback_query.message.answer(
-            "❗ Произошла ошибка при экспорте платежей.",
-            reply_markup=builder.as_markup(),
+            text="❗ Произошла ошибка при экспорте платежей.",
+            reply_markup=kb
         )
 
 
 @router.callback_query(F.data == "send_to_alls", IsAdminFilter())
 async def handle_send_to_all(callback_query: CallbackQuery, state: FSMContext):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="admin"))
+    kb = build_back_kb("admin")
     await callback_query.message.answer(
-        "✍️ Введите текст сообщения, который вы хотите отправить всем клиентам 📢🌐:",
-        reply_markup=builder.as_markup(),
+        text="✍️ Введите текст сообщения, который вы хотите отправить всем клиентам 📢🌐:",
+        reply_markup=kb,
     )
     await state.set_state(UserEditorState.waiting_for_message)
 
 
 @router.message(UserEditorState.waiting_for_message, IsAdminFilter())
 async def process_message_to_all(
-    message: types.Message, state: FSMContext, session: Any
+        message: types.Message, state: FSMContext, session: Any
 ):
     text_message = message.text
 
@@ -296,11 +232,15 @@ async def process_message_to_all(
                     f"❌ Ошибка при отправке сообщения пользователю {tg_id}: {e}"
                 )
 
-        await message.answer(
+        text = (
             f"📤 Рассылка завершена:\n"
             f"👥 Всего пользователей: {total_users}\n"
             f"✅ Успешно отправлено: {success_count}\n"
             f"❌ Не доставлено: {error_count}"
+        )
+
+        await message.answer(
+            text=text
         )
     except Exception as e:
         logger.error(f"❗ Ошибка при подключении к базе данных: {e}")
@@ -311,28 +251,21 @@ async def process_message_to_all(
 @router.callback_query(F.data == "backups", IsAdminFilter())
 async def handle_backup(callback_query: CallbackQuery, state: FSMContext):
     await callback_query.message.answer(
-        "💾 Инициализация резервного копирования базы данных..."
+        text="💾 Инициализация резервного копирования базы данных..."
     )
     await backup_database()
     await callback_query.message.answer(
-        "✅ Резервная копия успешно создана и отправлена администратору."
+        text="✅ Резервная копия успешно создана и отправлена администратору."
     )
 
 
 @router.callback_query(F.data == "restart_bot", IsAdminFilter())
 async def handle_restart(callback_query: CallbackQuery, state: FSMContext):
     await state.set_state(UserEditorState.waiting_for_restart_confirmation)
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="✅ Да, перезапустить", callback_data="confirm_restart"
-        ),
-        InlineKeyboardButton(text="❌ Нет, отмена", callback_data="admin"),
-    )
-    builder.row(InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin"))
+    kb = build_restart_kb()
     await callback_query.message.answer(
-        "🤔 Вы уверены, что хотите перезапустить бота?",
-        reply_markup=builder.as_markup(),
+        text="🤔 Вы уверены, что хотите перезапустить бота?",
+        reply_markup=kb,
     )
 
 
@@ -342,8 +275,7 @@ async def handle_restart(callback_query: CallbackQuery, state: FSMContext):
     IsAdminFilter(),
 )
 async def confirm_restart_bot(callback_query: CallbackQuery, state: FSMContext):
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin"))
+    kb = build_back_kb("admin")
     try:
         subprocess.run(
             ["sudo", "systemctl", "restart", "bot.service"],
@@ -353,39 +285,25 @@ async def confirm_restart_bot(callback_query: CallbackQuery, state: FSMContext):
         )
         await state.clear()
         await callback_query.message.answer(
-            "🔄 Бот успешно перезапущен.", reply_markup=builder.as_markup()
+            text="🔄 Бот успешно перезапущен.",
+            reply_markup=kb
         )
     except subprocess.CalledProcessError:
         await callback_query.message.answer(
-            "🔄 Бот успешно перезапущен.", reply_markup=builder.as_markup()
+            text="🔄 Бот успешно перезапущен.",
+            reply_markup=kb
         )
     except Exception as e:
         await callback_query.message.answer(
-            f"⚠️ Ошибка при перезагрузке бота: {e.stderr}",
-            reply_markup=builder.as_markup(),
+            text=f"⚠️ Ошибка при перезагрузке бота: {e.stderr}",
+            reply_markup=kb
         )
 
 
 @router.callback_query(F.data == "user_editor", IsAdminFilter())
 async def user_editor_menu(callback_query: CallbackQuery):
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="🔍 Поиск по названию ключа",
-            callback_data="search_by_key_name",
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🆔 Поиск по Telegram ID", callback_data="search_by_tg_id"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🌐 Поиск по Username", callback_data="search_by_username"
-        )
-    )
-    builder.row(InlineKeyboardButton(text="🔙 Вернуться назад", callback_data="admin"))
+    kb = build_user_editor_kb()
     await callback_query.message.answer(
-        "👇 Выберите способ поиска пользователя:", reply_markup=builder.as_markup()
+        text="👇 Выберите способ поиска пользователя:",
+        reply_markup=kb
     )
