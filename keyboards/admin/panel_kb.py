@@ -27,7 +27,7 @@ def build_start_kb() -> InlineKeyboardMarkup:
     )
     builder.button(
         text="📢 Массовая рассылка",
-        callback_data=AdminPanelCallback(action="send_to_alls").pack()
+        callback_data=AdminPanelCallback(action="sender").pack()
     )
     builder.button(
         text="💾 Создать резервную копию",
