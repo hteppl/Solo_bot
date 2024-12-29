@@ -1,7 +1,6 @@
 import subprocess
 
 from aiogram import F, Router
-from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 
 from filters.admin import IsAdminFilter
@@ -27,7 +26,7 @@ async def handle_restart(callback_query: CallbackQuery):
     AdminPanelCallback.filter(F.action == "restart_confirm"),
     IsAdminFilter(),
 )
-async def confirm_restart_bot(callback_query: CallbackQuery, state: FSMContext):
+async def confirm_restart_bot(callback_query: CallbackQuery):
     kb = build_back_kb("admin")
     try:
         subprocess.run(
@@ -36,7 +35,6 @@ async def confirm_restart_bot(callback_query: CallbackQuery, state: FSMContext):
             capture_output=True,
             text=True,
         )
-        await state.clear()
         await callback_query.message.answer(
             text="🔄 Бот успешно перезапущен.",
             reply_markup=kb
