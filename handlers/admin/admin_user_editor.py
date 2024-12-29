@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 from typing import Any
 
-from aiogram import F, Router, types
+from aiogram import Bot, F, Router, types
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton
@@ -33,6 +33,7 @@ class UserEditorState(StatesGroup):
     waiting_for_new_balance = State()
     waiting_for_key_name = State()
     waiting_for_expiry_time = State()
+    waiting_for_message_text = State()
 
 
 @router.callback_query(
@@ -123,6 +124,35 @@ async def handle_username_input(
         reply_markup=kb
     )
     await state.set_state(UserEditorState.displaying_user_info)
+
+
+@router.callback_query(F.data.startswith("send_message_"))
+async def handle_send_message(callback_query: types.CallbackQuery, state: FSMContext):
+    tg_id = callback_query.data.split("_")[2]
+    await state.update_data(target_tg_id=tg_id)
+    await callback_query.message.answer(
+        "✉️ Введите текст сообщения, которое вы хотите отправить пользователю."
+    )
+    await state.set_state(UserEditorState.waiting_for_message_text)
+
+
+@router.message(UserEditorState.waiting_for_message_text, IsAdminFilter())
+async def process_send_message(message: types.Message, state: FSMContext, bot: Bot):
+    data = await state.get_data()
+    target_tg_id = data.get("target_tg_id")
+
+    if not target_tg_id:
+        await message.answer("🚫 Ошибка: ID пользователя не найден.")
+        await state.clear()
+        return
+
+    try:
+        await bot.send_message(chat_id=target_tg_id, text=message.text)
+        await message.answer("✅ Сообщение успешно отправлено.")
+    except Exception as e:
+        await message.answer(f"❌ Не удалось отправить сообщение: {e}")
+
+    await state.clear()
 
 
 @router.message(UserEditorState.waiting_for_tg_id, F.text.isdigit(), IsAdminFilter())
