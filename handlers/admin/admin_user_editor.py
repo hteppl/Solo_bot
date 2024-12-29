@@ -17,6 +17,7 @@ from handlers.keys.key_utils import (
     renew_key_in_cluster,
 )
 from handlers.utils import sanitize_key_name
+from keyboards.admin.panel_kb import build_user_editor_kb, AdminPanelCallback
 from keyboards.admin.user_editor_kb import build_user_edit_kb, build_key_edit_kb, build_key_delete_kb, \
     build_user_delete_kb
 from keyboards.common_kb import build_back_kb
@@ -32,6 +33,18 @@ class UserEditorState(StatesGroup):
     waiting_for_new_balance = State()
     waiting_for_key_name = State()
     waiting_for_expiry_time = State()
+
+
+@router.callback_query(
+    AdminPanelCallback.filter(F.action == "user_editor"),
+    IsAdminFilter(),
+)
+async def user_editor_menu(callback_query: CallbackQuery):
+    kb = build_user_editor_kb()
+    await callback_query.message.answer(
+        text="👇 Выберите способ поиска пользователя:",
+        reply_markup=kb
+    )
 
 
 @router.callback_query(F.data == "search_by_tg_id", IsAdminFilter())

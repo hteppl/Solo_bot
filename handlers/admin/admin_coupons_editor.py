@@ -6,7 +6,8 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database import create_coupon, delete_coupon_from_db, get_all_coupons
 from filters.admin import IsAdminFilter
-from keyboards.admin.coupons_kb import build_coupons_kb, build_coupons_list_kb
+from keyboards.admin.coupons_editor_kb import build_coupons_kb, build_coupons_list_kb
+from keyboards.admin.panel_kb import AdminPanelCallback
 from keyboards.common_kb import build_back_kb
 from logger import logger
 
@@ -18,7 +19,10 @@ class AdminCouponsState(StatesGroup):
 router = Router()
 
 
-@router.callback_query(F.data == "coupons_editor", IsAdminFilter())
+@router.callback_query(
+    AdminPanelCallback.filter(F.action == "coupons_editor"),
+    IsAdminFilter(),
+)
 async def show_coupon_management_menu(
         callback_query: types.CallbackQuery, state: FSMContext
 ):

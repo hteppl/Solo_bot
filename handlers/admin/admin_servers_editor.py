@@ -8,7 +8,8 @@ from backup import create_backup_and_send_to_admins
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, DATABASE_URL
 from database import check_unique_server_name, get_servers_from_db
 from filters.admin import IsAdminFilter
-from keyboards.admin.servers_kb import build_editor_kb, build_cancel_kb, build_manage_server_kb, build_delete_server_kb, \
+from keyboards.admin.panel_kb import AdminPanelCallback
+from keyboards.admin.servers_editor_kb import build_editor_kb, build_cancel_kb, build_manage_server_kb, build_delete_server_kb, \
     build_manage_cluster_kb
 from keyboards.common_kb import build_back_kb, build_singleton_kb
 
@@ -23,7 +24,10 @@ class UserEditorState(StatesGroup):
     waiting_for_subscription_url = State()
 
 
-@router.callback_query(F.data == "servers_editor", IsAdminFilter())
+@router.callback_query(
+    AdminPanelCallback.filter(F.action == "servers_editor"),
+    IsAdminFilter(),
+)
 async def handle_servers_editor(callback_query: types.CallbackQuery):
     servers = await get_servers_from_db()
     kb = build_editor_kb(servers)
