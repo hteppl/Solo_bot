@@ -17,9 +17,10 @@ from handlers.keys.key_utils import (
     renew_key_in_cluster,
 )
 from handlers.utils import sanitize_key_name
-from keyboards.admin.panel_kb import build_user_editor_kb, AdminPanelCallback
+from keyboards.admin.panel_kb import AdminPanelCallback
 from keyboards.admin.user_editor_kb import build_user_edit_kb, build_key_edit_kb, build_key_delete_kb, \
     build_user_delete_kb
+from keyboards.admin.user_stats_kb import build_user_editor_kb
 from keyboards.common_kb import build_back_kb
 from logger import logger
 
