@@ -1,5 +1,5 @@
 from aiogram.filters.callback_data import CallbackData
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 
@@ -10,28 +10,36 @@ class AdminPanelCallback(CallbackData, prefix='admin_panel'):
 def build_start_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.button(
-        text="📊 Статистика пользователей",
+        text="🔍 Поиск пользователя",
+        callback_data=AdminPanelCallback(action="users_search").pack()
+    )
+    builder.button(
+        text="🔑 Поиск по названию ключа",
+        callback_data=AdminPanelCallback(action="users_search_key").pack()
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="🖥️ Серверы",
+            callback_data=AdminPanelCallback(action="servers_editor").pack()
+        ),
+        InlineKeyboardButton(
+            text="🎟️ Купоны",
+            callback_data=AdminPanelCallback(action="coupons_editor").pack()
+        )
+    )
+    builder.row(
+        InlineKeyboardButton(
+            text="📢 Рассылка",
+            callback_data=AdminPanelCallback(action="sender").pack()
+        ),
+        InlineKeyboardButton(
+            text="💾 Бекап",
+            callback_data=AdminPanelCallback(action="backups").pack()
+        )
+    )
+    builder.button(
+        text="📊 Статистика",
         callback_data=AdminPanelCallback(action="user_stats").pack()
-    )
-    builder.button(
-        text="👥 Управление пользователями",
-        callback_data=AdminPanelCallback(action="user_editor").pack()
-    )
-    builder.button(
-        text="🖥️ Управление серверами",
-        callback_data=AdminPanelCallback(action="servers_editor").pack()
-    )
-    builder.button(
-        text="🎟️ Управление купонами",
-        callback_data=AdminPanelCallback(action="coupons_editor").pack()
-    )
-    builder.button(
-        text="📢 Массовая рассылка",
-        callback_data=AdminPanelCallback(action="sender").pack()
-    )
-    builder.button(
-        text="💾 Создать резервную копию",
-        callback_data=AdminPanelCallback(action="backups").pack()
     )
     builder.button(
         text="🔄 Перезагрузить бота",

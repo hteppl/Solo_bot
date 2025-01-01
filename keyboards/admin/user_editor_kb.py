@@ -1,30 +1,52 @@
+from aiogram.filters.callback_data import CallbackData
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+
+from keyboards.admin.panel_kb import AdminPanelCallback
+
+
+class AdminUserEditorCallback(CallbackData, prefix='admin_users_editor'):
+    action: str
+    data: str
 
 
 def build_user_edit_kb(tg_id: int, key_records: list) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
-    for (email,) in key_records:
-        builder.row(
-            InlineKeyboardButton(text=f"🔑 {email}", callback_data=f"edit_key_{email}")
+    for email in key_records:
+        builder.button(
+            text=f"🔑 {email}",
+            callback_data=AdminUserEditorCallback(
+                action="users_key_edit",
+                data=email
+            ).pack()
         )
 
-    builder.row(
-        InlineKeyboardButton(
-            text="📝 Изменить баланс",
-            callback_data=f"change_balance_{tg_id}",
-        )
+    builder.button(
+        text="📝 Изменить баланс",
+        callback_data=AdminUserEditorCallback(
+            action="users_balance_change",
+            data=tg_id
+        ).pack()
     )
-
-    builder.row(
-        InlineKeyboardButton(
-            text="🔄 Восстановить пробник",
-            callback_data=f"restore_trial_{tg_id}",
-        )
+    builder.button(
+        text="🔄 Восстановить пробник",
+        callback_data=AdminUserEditorCallback(
+            action="users_trial_restore",
+            data=tg_id
+        ).pack()
     )
-    builder.row(InlineKeyboardButton(text="❌ Удалить клиента", callback_data=f"confirm_delete_user_{tg_id}"))
-    builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="user_editor"))
+    builder.button(
+        text="❌ Удалить клиента",
+        callback_data=AdminUserEditorCallback(
+            action="users_delete",
+            data=tg_id
+        ).pack()
+    )
+    builder.button(
+        text="🔙 Назад",
+        callback_data=AdminPanelCallback(action="user_editor").pack()
+    )
     return builder.as_markup()
 
 
@@ -40,7 +62,10 @@ def build_key_edit_kb(key_details: dict, email: str) -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(
             text="ℹ️ Получить информацию о юзере",
-            callback_data=f"user_info|{key_details['tg_id']}",
+            callback_data=AdminUserEditorCallback(
+                action="users_info",
+                data=key_details["tg_id"]
+            ).pack()
         )
     )
     builder.row(

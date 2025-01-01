@@ -19,8 +19,7 @@ from handlers.keys.key_utils import (
 from handlers.utils import sanitize_key_name
 from keyboards.admin.panel_kb import AdminPanelCallback
 from keyboards.admin.user_editor_kb import build_user_edit_kb, build_key_edit_kb, build_key_delete_kb, \
-    build_user_delete_kb
-from keyboards.admin.user_stats_kb import build_user_editor_kb
+    build_user_delete_kb, AdminUserEditorCallback
 from keyboards.common_kb import build_back_kb
 from logger import logger
 
@@ -28,117 +27,120 @@ router = Router()
 
 
 class UserEditorState(StatesGroup):
-    waiting_for_tg_id = State()
-    waiting_for_username = State()
-    displaying_user_info = State()
-    waiting_for_new_balance = State()
+    # search
+    waiting_for_user_data = State()
     waiting_for_key_name = State()
+    # updating data
+    waiting_for_new_balance = State()
     waiting_for_expiry_time = State()
     waiting_for_message_text = State()
 
 
 @router.callback_query(
-    AdminPanelCallback.filter(F.action == "user_editor"),
+    AdminPanelCallback.filter(F.action == "users_search"),
     IsAdminFilter(),
 )
-async def user_editor_menu(callback_query: CallbackQuery):
-    kb = build_user_editor_kb()
-    await callback_query.message.answer(
-        text="👇 Выберите способ поиска пользователя:",
-        reply_markup=kb
-    )
-
-
-@router.callback_query(F.data == "search_by_tg_id", IsAdminFilter())
-async def prompt_tg_id(callback_query: CallbackQuery, state: FSMContext):
-    kb = build_back_kb("user_editor")
-    await callback_query.message.answer(
-        text="🔍 Введите Telegram ID клиента:",
-        reply_markup=kb
-    )
-    await state.set_state(UserEditorState.waiting_for_tg_id)
-
-
-@router.callback_query(F.data == "search_by_username", IsAdminFilter())
-async def prompt_username(callback_query: CallbackQuery, state: FSMContext):
-    kb = build_back_kb("user_editor")
-    await callback_query.message.answer(
-        text="🔍 Введите Username клиента:",
-        reply_markup=kb
-    )
-    await state.set_state(UserEditorState.waiting_for_username)
-
-
-@router.message(UserEditorState.waiting_for_username, IsAdminFilter())
-async def handle_username_input(
-        message: types.Message, state: FSMContext, session: Any
+async def handle_users_search(
+        callback_query: CallbackQuery,
+        state: FSMContext
 ):
-    # Extract the username from a message text by removing leading '@' and the Telegram URL prefix
-    username = message.text.strip().lstrip('@').replace('https://t.me/', '')
-    user_record = await session.fetchrow(
-        "SELECT tg_id FROM users WHERE username = $1", username
+    text = (
+        "🔍 Введите ID или Username пользователя для поиска:"
+        "\n— ID - числовой айди пользователя"
+        "\n— Username - юзернейм пользователя, начинающийся с @ или https://t.me/"
     )
 
     kb = build_back_kb("user_editor")
 
-    if not user_record:
-        await message.answer(
-            text="🔍 Пользователь с указанным username не найден. 🚫",
-            reply_markup=kb,
-        )
-        await state.clear()
-        return
-
-    tg_id = user_record["tg_id"]
-    username = await session.fetchval(
-        "SELECT username FROM users WHERE tg_id = $1", tg_id
-    )
-    balance = await session.fetchval(
-        "SELECT balance FROM connections WHERE tg_id = $1", tg_id
-    )
-    key_records = await session.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
-    referral_count = await session.fetchval(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
-    )
-
-    if balance is None:
-        await message.answer(
-            "🚫 Пользователь с указанным tg_id не найден. 🔍",
-            reply_markup=kb,
-        )
-        await state.clear()
-        return
-
-    kb = build_user_edit_kb(tg_id, key_records)
-
-    user_info = (
-        f"📊 Информация о пользователе:\n\n"
-        f"🆔 ID пользователя: <b>{tg_id}</b>\n"
-        f"👤 Логин пользователя: <b>@{username}</b>\n"
-        f"💰 Баланс: <b>{balance}</b>\n"
-        f"👥 Количество рефералов: <b>{referral_count}</b>\n"
-        f"🔑 Ключи (для редактирования нажмите на ключ):"
-    )
-
-    await message.answer(
-        text=user_info,
+    await state.set_state(UserEditorState.waiting_for_user_data)
+    await callback_query.message.answer(
+        text=text,
         reply_markup=kb
     )
-    await state.set_state(UserEditorState.displaying_user_info)
 
 
-@router.callback_query(F.data.startswith("send_message_"))
-async def handle_send_message(callback_query: types.CallbackQuery, state: FSMContext):
-    tg_id = callback_query.data.split("_")[2]
-    await state.update_data(target_tg_id=tg_id)
+@router.callback_query(
+    AdminPanelCallback.filter(F.action == "users_search_key"),
+    IsAdminFilter(),
+)
+async def handle_users_search_key(
+        callback_query: CallbackQuery,
+        state: FSMContext
+):
+    kb = build_back_kb("user_editor")
+    await state.set_state(UserEditorState.waiting_for_key_name)
+    await callback_query.message.answer(
+        text="🔑 Введите имя ключа для поиска:",
+        reply_markup=kb
+    )
+
+
+@router.message(
+    UserEditorState.waiting_for_user_data,
+    IsAdminFilter()
+)
+async def handle_user_data_input(
+        message: types.Message,
+        state: FSMContext,
+        session: Any
+):
+    kb = build_back_kb("user_editor")
+
+    if not message.text:
+        await message.reply(
+            text="💢 Пожалуйста, отправьте текстовое сообщение.",
+            reply_markup=kb
+        )
+        return
+
+    if message.text.isdigit():
+        tg_id = int(message.text)
+    else:
+        # Extract the username from a message text by removing leading '@' and the Telegram URL prefix
+        username = message.text.strip().lstrip('@').replace('https://t.me/', '')
+        user = await session.fetchrow(
+            "SELECT tg_id FROM users WHERE username = $1", username
+        )
+
+        if not user:
+            await message.answer(
+                text="🔍 Пользователь с указанным username не найден. 🚫",
+                reply_markup=kb,
+            )
+            await state.clear()
+            return
+
+        tg_id = user["tg_id"]
+
+    await process_user_search(message, state, session, tg_id)
+
+
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_send_message"),
+    IsAdminFilter(),
+)
+async def handle_send_message(
+        callback_query: types.CallbackQuery,
+        callback_data: AdminUserEditorCallback,
+        state: FSMContext
+):
+    tg_id = callback_data.data
     await callback_query.message.answer(
         "✉️ Введите текст сообщения, которое вы хотите отправить пользователю."
     )
+    await state.update_data(target_tg_id=tg_id)
     await state.set_state(UserEditorState.waiting_for_message_text)
 
 
-@router.message(UserEditorState.waiting_for_message_text, IsAdminFilter())
-async def process_send_message(message: types.Message, state: FSMContext, bot: Bot):
+@router.message(
+    UserEditorState.waiting_for_message_text,
+    IsAdminFilter()
+)
+async def handle_message_text_input(
+        message: types.Message,
+        state: FSMContext,
+        bot: Bot
+):
     data = await state.get_data()
     target_tg_id = data.get("target_tg_id")
 
@@ -156,51 +158,16 @@ async def process_send_message(message: types.Message, state: FSMContext, bot: B
     await state.clear()
 
 
-@router.message(UserEditorState.waiting_for_tg_id, F.text.isdigit(), IsAdminFilter())
-async def handle_tg_id_input(message: types.Message, state: FSMContext, session: Any):
-    tg_id = int(message.text)
-    username = await session.fetchval(
-        "SELECT username FROM users WHERE tg_id = $1", tg_id
-    )
-    balance = await session.fetchval(
-        "SELECT balance FROM connections WHERE tg_id = $1", tg_id
-    )
-    key_records = await session.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
-    referral_count = await session.fetchval(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
-    )
-
-    if balance is None:
-        kb = build_back_kb("user_editor")
-        await message.answer(
-            text="❌ Пользователь с указанным tg_id не найден. 🔍",
-            reply_markup=kb,
-        )
-        await state.clear()
-        return
-
-    kb = build_user_edit_kb(tg_id, key_records)
-
-    user_info = (
-        f"📊 Информация о пользователе:\n\n"
-        f"🆔 ID пользователя: <b>{tg_id}</b>\n"
-        f"👤 Логин пользователя: <b>@{username}</b>\n"
-        f"💰 Баланс: <b>{balance}</b>\n"
-        f"👥 Количество рефералов: <b>{referral_count}</b>\n"
-        f"🔑 Ключи (для редактирования нажмите на ключ):"
-    )
-
-    await message.answer(
-        text=user_info,
-        reply_markup=kb
-    )
-    await state.set_state(UserEditorState.displaying_user_info)
-
-
-@router.callback_query(F.data.startswith("restore_trial_"), IsAdminFilter())
-async def handle_restore_trial(callback_query: types.CallbackQuery, session: Any):
-    tg_id = int(callback_query.data.split("_")[2])
-
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_trial_restore"),
+    IsAdminFilter(),
+)
+async def handle_restore_trial(
+        callback_query: types.CallbackQuery,
+        callback_data: AdminUserEditorCallback,
+        session: Any
+):
+    tg_id = int(callback_data.data)
     await restore_trial(tg_id, session)
 
     kb = build_back_kb("admin")
@@ -211,9 +178,16 @@ async def handle_restore_trial(callback_query: types.CallbackQuery, session: Any
     )
 
 
-@router.callback_query(F.data.startswith("change_balance_"), IsAdminFilter())
-async def process_balance_change(callback_query: CallbackQuery, state: FSMContext):
-    tg_id = int(callback_query.data.split("_")[2])
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_balance_change"),
+    IsAdminFilter()
+)
+async def process_balance_change(
+        callback_query: CallbackQuery,
+        callback_data: AdminUserEditorCallback,
+        state: FSMContext
+):
+    tg_id = int(callback_data.data)
     await state.update_data(tg_id=tg_id)
 
     kb = build_back_kb("user_editor")
@@ -225,9 +199,14 @@ async def process_balance_change(callback_query: CallbackQuery, state: FSMContex
     await state.set_state(UserEditorState.waiting_for_new_balance)
 
 
-@router.message(UserEditorState.waiting_for_new_balance, IsAdminFilter())
+@router.message(
+    UserEditorState.waiting_for_new_balance,
+    IsAdminFilter()
+)
 async def handle_new_balance_input(
-        message: types.Message, state: FSMContext, session: Any
+        message: types.Message,
+        state: FSMContext,
+        session: Any
 ):
     if not message.text.isdigit() or int(message.text) < 0:
         kb = build_back_kb("user_editor")
@@ -256,9 +235,16 @@ async def handle_new_balance_input(
     await state.clear()
 
 
-@router.callback_query(F.data.startswith("edit_key_"), IsAdminFilter())
-async def process_key_edit(callback_query: CallbackQuery, session: Any):
-    email = callback_query.data.split("_", 2)[2]
+@router.callback_query(
+    AdminUserEditorCallback.filter(F.action == "users_key_edit"),
+    IsAdminFilter()
+)
+async def process_key_edit(
+        callback_query: CallbackQuery,
+        callback_data: AdminUserEditorCallback,
+        session: Any
+):
+    email = callback_data.data
     key_details = await get_key_details(email, session)
 
     if not key_details:
@@ -285,19 +271,14 @@ async def process_key_edit(callback_query: CallbackQuery, session: Any):
     )
 
 
-@router.callback_query(F.data == "search_by_key_name", IsAdminFilter())
-async def prompt_key_name(callback_query: CallbackQuery, state: FSMContext):
-    kb = build_back_kb("user_editor")
-    await callback_query.message.answer(
-        text="🔑 Введите имя ключа:",
-        reply_markup=kb
-    )
-    await state.set_state(UserEditorState.waiting_for_key_name)
-
-
-@router.message(UserEditorState.waiting_for_key_name, IsAdminFilter())
+@router.message(
+    UserEditorState.waiting_for_key_name,
+    IsAdminFilter()
+)
 async def handle_key_name_input(
-        message: types.Message, state: FSMContext, session: Any
+        message: types.Message,
+        state: FSMContext,
+        session: Any
 ):
     key_name = sanitize_key_name(message.text)
     key_details = await get_key_details(key_name, session)
@@ -327,8 +308,14 @@ async def handle_key_name_input(
     await state.clear()
 
 
-@router.callback_query(F.data.startswith("change_expiry|"), IsAdminFilter())
-async def prompt_expiry_change(callback_query: CallbackQuery, state: FSMContext):
+@router.callback_query(
+    F.data.startswith("change_expiry|"),
+    IsAdminFilter()
+)
+async def prompt_expiry_change(
+        callback_query: CallbackQuery,
+        state: FSMContext
+):
     email = callback_query.data.split("|")[1]
     await callback_query.message.answer(
         text=f"⏳ Введите новое время истечения для ключа <b>{email}</b> в формате <code>YYYY-MM-DD HH:MM:SS</code>:"
@@ -337,9 +324,14 @@ async def prompt_expiry_change(callback_query: CallbackQuery, state: FSMContext)
     await state.set_state(UserEditorState.waiting_for_expiry_time)
 
 
-@router.message(UserEditorState.waiting_for_expiry_time, IsAdminFilter())
+@router.message(
+    UserEditorState.waiting_for_expiry_time,
+    IsAdminFilter()
+)
 async def handle_expiry_time_input(
-        message: types.Message, state: FSMContext, session: Any
+        message: types.Message,
+        state: FSMContext,
+        session: Any
 ):
     user_data = await state.get_data()
     email = user_data.get("email")
@@ -384,20 +376,19 @@ async def handle_expiry_time_input(
         clusters = await get_servers_from_db()
 
         async def update_key_on_all_servers():
-            tasks = []
-            for cluster_name, cluster_servers in clusters.items():
-                for server in cluster_servers:
-                    tasks.append(
-                        asyncio.create_task(
-                            renew_key_in_cluster(
-                                cluster_name,
-                                email,
-                                client_id,
-                                expiry_time,
-                                total_gb=TOTAL_GB,
-                            )
-                        )
+            tasks = [
+                asyncio.create_task(
+                    renew_key_in_cluster(
+                        cluster_name,
+                        email,
+                        client_id,
+                        expiry_time,
+                        total_gb=TOTAL_GB,
                     )
+                )
+                for cluster_name in clusters
+            ]
+
             await asyncio.gather(*tasks)
 
         await update_key_on_all_servers()
@@ -422,9 +413,13 @@ async def handle_expiry_time_input(
     await state.clear()
 
 
-@router.callback_query(F.data.startswith("delete_key_admin|"), IsAdminFilter())
+@router.callback_query(
+    F.data.startswith("delete_key_admin|"),
+    IsAdminFilter()
+)
 async def process_callback_delete_key(
-        callback_query: types.CallbackQuery, session: Any
+        callback_query: types.CallbackQuery,
+        session: Any
 ):
     email = callback_query.data.split("|")[1]
     client_id = await session.fetchval(
@@ -447,9 +442,13 @@ async def process_callback_delete_key(
     )
 
 
-@router.callback_query(F.data.startswith("confirm_delete_admin|"), IsAdminFilter())
+@router.callback_query(
+    F.data.startswith("confirm_delete_admin|"),
+    IsAdminFilter()
+)
 async def process_callback_confirm_delete(
-        callback_query: types.CallbackQuery, session: Any
+        callback_query: types.CallbackQuery,
+        session: Any
 ):
     client_id = callback_query.data.split("|")[1]
     record = await session.fetchrow(
@@ -484,42 +483,15 @@ async def process_callback_confirm_delete(
         )
 
 
-@router.callback_query(F.data.startswith("user_info|"), IsAdminFilter())
-async def handle_user_info(
-        callback_query: types.CallbackQuery, state: FSMContext, session: Any
+@router.callback_query(
+    F.data.startswith("confirm_delete_user_"),
+    IsAdminFilter()
+)
+async def confirm_delete_user(
+        callback_query: types.CallbackQuery,
+        state: FSMContext,
+        session: Any
 ):
-    tg_id = int(callback_query.data.split("|")[1])
-    username = await session.fetchval(
-        "SELECT username FROM users WHERE tg_id = $1", tg_id
-    )
-    balance = await session.fetchval(
-        "SELECT balance FROM connections WHERE tg_id = $1", tg_id
-    )
-    key_records = await session.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
-    referral_count = await session.fetchval(
-        "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
-    )
-
-    kb = build_user_edit_kb(tg_id, key_records)
-
-    user_info = (
-        f"📊 Информация о пользователе:\n\n"
-        f"🆔 ID пользователя: <b>{tg_id}</b>\n"
-        f"👤 Логин пользователя: <b>@{username}</b>\n"
-        f"💰 Баланс: <b>{balance}</b>\n"
-        f"👥 Количество рефералов: <b>{referral_count}</b>\n"
-        f"🔑 Ключи (для редактирования нажмите на ключ):"
-    )
-
-    await callback_query.message.answer(
-        text=user_info,
-        reply_markup=kb
-    )
-    await state.set_state(UserEditorState.displaying_user_info)
-
-
-@router.callback_query(F.data.startswith("confirm_delete_user_"), IsAdminFilter())
-async def confirm_delete_user(callback_query: types.CallbackQuery, state: FSMContext, session: Any):
     tg_id = int(callback_query.data.split("_")[3])
 
     kb = build_user_delete_kb(tg_id)
@@ -530,8 +502,14 @@ async def confirm_delete_user(callback_query: types.CallbackQuery, state: FSMCon
     )
 
 
-@router.callback_query(F.data.startswith("delete_user_"), IsAdminFilter())
-async def delete_user(callback_query: types.CallbackQuery, session: Any):
+@router.callback_query(
+    F.data.startswith("delete_user_"),
+    IsAdminFilter()
+)
+async def delete_user(
+        callback_query: types.CallbackQuery,
+        session: Any
+):
     tg_id = int(callback_query.data.split("_")[2])
 
     key_records = await session.fetch("SELECT email, client_id FROM keys WHERE tg_id = $1", tg_id)
@@ -563,6 +541,47 @@ async def delete_user(callback_query: types.CallbackQuery, session: Any):
         await callback_query.message.answer(
             text=f"❌ Произошла ошибка при удалении пользователя с ID {tg_id}. Попробуйте снова."
         )
+
+
+async def process_user_search(message: types.Message, state: FSMContext, session: Any, tg_id: int) -> None:
+    username = await session.fetchval(
+        "SELECT username FROM users WHERE tg_id = $1", tg_id
+    )
+    balance = await session.fetchval(
+        "SELECT balance FROM connections WHERE tg_id = $1", tg_id
+    )
+
+    kb = build_back_kb("user_editor")
+
+    if balance is None:
+        await message.answer(
+            text="🚫 Пользователь с указанным tg_id не найден. 🔍",
+            reply_markup=kb,
+        )
+        return
+
+    key_records = await session.fetch("SELECT email FROM keys WHERE tg_id = $1", tg_id)
+    referral_count = await session.fetchval(
+        "SELECT COUNT(*) FROM referrals WHERE referrer_tg_id = $1", tg_id
+    )
+
+    kb = build_user_edit_kb(tg_id, key_records)
+
+    text = (
+        f"📊 Информация о пользователе:\n\n"
+        f"🆔 ID пользователя: <b>{tg_id}</b>\n"
+        f"👤 Логин пользователя: <b>@{username}</b>\n"
+        f"💰 Баланс: <b>{balance}</b>\n"
+        f"👥 Количество рефералов: <b>{referral_count}</b>\n"
+        f"🔑 Ключи (для редактирования нажмите на ключ):"
+    )
+
+    await message.answer(
+        text=text,
+        reply_markup=kb
+    )
+
+    await state.clear()
 
 
 async def get_key_details(email, session):

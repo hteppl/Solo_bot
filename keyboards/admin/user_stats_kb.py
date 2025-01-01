@@ -22,25 +22,3 @@ def build_user_stats_kb() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🔙 Вернуться в меню", callback_data="admin")
     )
     return builder.as_markup()
-
-
-def build_user_editor_kb() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(
-            text="🔍 Поиск по названию ключа",
-            callback_data="search_by_key_name",
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🆔 Поиск по Telegram ID", callback_data="search_by_tg_id"
-        )
-    )
-    builder.row(
-        InlineKeyboardButton(
-            text="🌐 Поиск по Username", callback_data="search_by_username"
-        )
-    )
-    builder.row(InlineKeyboardButton(text="🔙 Вернуться назад", callback_data="admin"))
-    return builder.as_markup()
